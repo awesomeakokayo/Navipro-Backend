@@ -23,7 +23,7 @@ chat_history: dict[str, list] = {}
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://naviprototype.netlify.app/"],
+    allow_origins=["https://naviprototype.netlify.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -934,4 +934,5 @@ def api_full_pipeline(req: FullPipelineReq):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("agent_orchestra:app", host="127.0.0.1", port=8000, reload=True)
+
 
