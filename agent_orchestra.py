@@ -949,6 +949,33 @@ def api_generate_roadmap(req: FullPipelineReq, db: Session = Depends (get_db)):
             status_code=500,
             detail=f"Failed to generate roadmap: {str(e)}"
         )
+
+@app.get("/api/user_roadmap/{user_id}")
+def api_get_user_roadmap(user_id: str, db: Session = Depends(get_db)):
+    """Get user's roadmap from database"""
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+    
+    roadmap_record = db.query(Roadmap).filter(Roadmap.user_id == user_id).first()
+    if not roadmap_record:
+        raise HTTPException(404, "Roadmap not found")
+    
+    progress = db.query(Progress).filter(Progress.user_id == user_id).first()
+    
+    roadmap_data = roadmap_record.roadmap_data
+    
+    # Add progress information
+    if progress:
+        roadmap_data["progress"] = {
+            "current_day": progress.current_day,
+            "current_week": progress.current_week,
+            "current_month": progress.current_month,
+            "total_tasks_completed": progress.total_tasks_completed,
+            "start_date": progress.start_date.isoformat() if progress.start_date else None
+        }
+    
+    return roadmap_data
     
 @app.get("/api/daily_task/{user_id}")
 def api_get_daily_task(user_id:str, db: Session = Depends(get_db)):
@@ -1065,6 +1092,7 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("agent_orchestra:app", host="0.0.0.0", port=port)
+
 
 
 
