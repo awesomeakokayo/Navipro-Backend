@@ -1,10 +1,7 @@
 services:
   - type: web
-    name: navi-backend
+    name: navipro-backend
     env: python
-    plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn agent_orchestra:app --host 0.0.0.0 --port $PORT
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.9
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn -k uvicorn.workers.UvicornWorker agent_orchestra:app --bind 0.0.0.0:$PORT"
+    runtime: "python-3.11"
