@@ -2,12 +2,15 @@ import os
 import json
 from uuid import uuid4
 from datetime import datetime, timedelta
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import httpx
 import re
+from sqlalchemy import create_engine, Column, String, Integer, Boolean, DateTime, Text, JSON
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, Session
 
 load_dotenv()
 
@@ -15,11 +18,79 @@ load_dotenv()
 GROQ_API_KEY  = os.getenv("GROQ_API_KEY")
 GROQ_BASE_URL = os.getenv("GROQ_BASE_URL")
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-# In-memory user store (for demo)
-user_store: dict[str, dict] = {}
-chat_history: dict[str, list] = {}
+# Use DATABASE_URL from environment, fallback to SQLite if not provided
+if DATABASE_URL:
+    SQLALCHEMY_DATABASE_URL = DATABASE_URL
+else:
+    SQLALCHEMY_DATABASE_URL = "sqlite:///./navi.db"
 
+# Create database engine
+if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
+    )
+else:
+    engine = create_engine(SQLALCHEMY_DATABASE_URL)
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+# Database Models
+class User(Base):
+    __tablename__ = "users"
+    
+    user_id = Column(String, primary_key=True, index=True)
+    goal = Column(String)
+    target_role = Column(String)
+    timeframe = Column(String)
+    hours_per_week = Column(String)
+    learning_style = Column(String)
+    learning_speed = Column(String)
+    skill_level = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+class Roadmap(Base):
+    __tablename__ = "roadmaps"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, index=True)
+    roadmap_data = Column(JSON)  # Stores the entire roadmap structure
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class Progress(Base):
+    __tablename__ = "progress"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, index=True)
+    current_day = Column(Integer, default=1)
+    current_week = Column(Integer, default=1)
+    current_month = Column(Integer, default=1)
+    total_tasks_completed = Column(Integer, default=0)
+    start_date = Column(DateTime, default=datetime.utcnow)
+
+class ChatHistory(Base):
+    __tablename__ = "chat_history"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, index=True)
+    user_message = Column(Text)
+    assistant_response = Column(Text)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+# Create tables
+Base.metadata.create_all(bind=engine)
+
+# Dependency to get DB session
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+    
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -46,6 +117,7 @@ class FullPipelineReq(BaseModel):
     learning_style: Optional[str] = "visual"
     learning_speed: Optional[str] = "average"
     skill_level: Optional[str] = "beginner"
+
 
 def regroup_by_year(flat_months: list[dict], months_per_year: int = 12) -> list[dict]:
     years = []
@@ -428,17 +500,23 @@ def normalize_roadmap_structure(roadmap_data: dict, months: int = 3, weeks_per_m
 
 
 # DAILY TASK SYSTEM
-def get_current_daily_task(user_id: str) -> dict:
+def get_current_daily_task(user_id: str, db: Session) -> dict:
     """Get the current daily task for the user with motivation"""
 
-    roadmap = user_store.get(user_id)
-    if not roadmap:
-        return{}
+    progress = db.query(Progress).filter(Progress.user_id == user_id).first()
+    if not progress:
+        return {}
     
-    progress = roadmap.get("progress", {})
-    current_month = progress.get("current_month", 1)
-    current_week = progress.get("current_week", 1)
-    current_day = progress.get("current_day", 1)
+    # Get user roadmap
+    roadmap_record = db.query(Roadmap).filter(Roadmap.user_id == user_id).first()
+    if not roadmap_record:
+        return {}
+    
+    roadmap = roadmap_record.roadmap_data
+    
+    current_month = progress.current_month
+    current_week = progress.current_week
+    current_day = progress.current_day
 
     # find current task
     for month in roadmap.get("roadmap", []):
@@ -452,7 +530,7 @@ def get_current_daily_task(user_id: str) -> dict:
                             motivation = generate_motivational_message(
                                 roadmap["goal"],
                                 task["title"],
-                                progress.get("total_tasks_completed",0)
+                                progress.total_tasks_completed
                             )
 
                             return {
@@ -468,7 +546,7 @@ def get_current_daily_task(user_id: str) -> dict:
                                         "current_day": current_day,
                                         "current_week": current_week,
                                         "current_month": current_month,
-                                        "total_completed": progress.get("total_tasks_completed", 0)  # <-- typo fixed
+                                        "total_completed": progress.total_tasks_completed 
                                     }
                                 }
 
@@ -489,12 +567,17 @@ def generate_motivational_message(goal: str, task_title: str, completed_task: in
     return random.choice(messages)
 
 
-def mark_task_completed(user_id: str, task_id: str) -> dict:
+def mark_task_completed(user_id: str, task_id: str, db: Session) -> dict:
     """Mark current task as completed and move to next"""
 
-    roadmap = user_store.get(user_id)
-    if not roadmap:
-        return{"error": "User not found"}
+    # Get user progress and roadmap
+    progress = db.query(Progress).filter(Progress.user_id == user_id).first()
+    roadmap_record = db.query(Roadmap).filter(Roadmap.user_id == user_id).first()
+    
+    if not progress or not roadmap_record:
+        return {"error": "User not found"}
+    
+    roadmap = roadmap_record.roadmap_data
     
     # Find and mark task as completed
     task_found = False
@@ -507,28 +590,29 @@ def mark_task_completed(user_id: str, task_id: str) -> dict:
                     task_found = True
 
                     #Update progress
-                    progress = roadmap.get("progress", {})
-                    progress["total_tasks_completed"] = progress.get("total_tasks_completed", 0) + 1
+                    progress.total_tasks_completed += 1
 
                     #Move to next day
-                    advance_to_next_task(roadmap)
+                    advance_to_next_task(roadmap, progress)
+
+                    # Save updated roadmap and progress to database
+                    roadmap_record.roadmap_data = roadmap
+                    db.commit()
 
                     return {
                         "status": "success",
                         "message": "Task completed! 🎉",
                         "completed_task": task["title"],
-                        "total_completed": progress["total_tasks_completed"]
+                        "total_completed": progress.total_tasks_completed
                     }
     if not task_found:
         return{"error": "Task not found"}
     
-def advance_to_next_task(roadmap: dict):
+def advance_to_next_task(roadmap: dict, progress: Progress):
     """Move user to the next task/week/month"""
-
-    progress = roadmap.get("progress", {})
-    current_month = progress.get("current_month", 1)
-    current_week = progress.get("current_week", 1)
-    current_day = progress.get("current_day", 1)
+    current_month = progress.current_month
+    current_week = progress.current_week
+    current_day = progress.current_day
 
     #find next incomplete task
     for month in roadmap.get("roadmap", []):
@@ -546,18 +630,25 @@ def advance_to_next_task(roadmap: dict):
     progress["current_day"] = -1  #to indicate completion
 
 # YOUTUBE VIDEO RECOMMENDATION
-def get_current_week_videos(user_id: str) -> dict:
+def get_current_week_videos(user_id: str, db: Session) -> dict:
     """Get Youtube videos for current week's focus"""
 
-    roadmap = user_store.get(user_id)
-    if not roadmap:
-        return{"error": "User not found"}
+     # Get user progress and roadmap
+    progress = db.query(Progress).filter(Progress.user_id == user_id).first()
+    roadmap_record = db.query(Roadmap).filter(Roadmap.user_id == user_id).first()
     
-    progress = roadmap.get("progress", {})
+    if not progress or not roadmap_record:
+        return {"error": "User not found"}
+
+    roadmap = roadmap_record.roadmap_data
     current_month = progress.get("current_month", 1)
     current_week = progress.get("current_week", 1)
 
     # Create a request object from stored roadmap data
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if not user:
+        return {"error": "User not found"}
+    
     req = FullPipelineReq(
         goal=roadmap.get("goal", ""),
         target_role=roadmap.get("target_role", ""),
@@ -679,33 +770,36 @@ def get_sample_videos(query: str) -> list:
     ]
 
 # CHATBOT SYSTEM
-def get_ai_chat_response(user_id: str, message: str) -> dict:
+def get_ai_chat_response(user_id: str, message: str, db: Session) -> dict:
     """Generate AI chat response based on user's roadmap context"""
 
-    roadmap = user_store.get(user_id)
-    if not roadmap:
+    # Get user data
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if not user:
         return {"error": "User not found"}
     
-    # Get user context
-    user_goal = roadmap.get("goal", "career goal")
-    target_role = roadmap.get("target_role", "target role")
-    current_progress = roadmap.get("progress", {})
-    total_completed = current_progress.get("total_tasks_completed", 0)
+    # Get user progress
+    progress = db.query(Progress).filter(Progress.user_id == user_id).first()
+    total_completed = progress.total_tasks_completed if progress else 0
 
-    # Get chat history
-    if user_id not in chat_history:
-        chat_history[user_id] = []
+    # Get chat history from database
+    chat_history_records = db.query(ChatHistory).filter(
+        ChatHistory.user_id == user_id
+    ).order_by(ChatHistory.timestamp.desc()).limit(6).all()
+    
+    # Reverse to get chronological order
+    chat_history_records.reverse()
 
     #Build AIs context-aware prompt
     system_prompt = f"""You are Navi, a helpful career mentor AI assitant
     
     Context about the user:
-    - Career Goal: {user_goal}
+    - Career Goal: {user.goal}
     - Tasks Completed: {total_completed}
-    - Learning Journey: Currently working on their {target_role} roadmap
+    - Learning Journey: Currently working on their {user.target_role} roadmap
     
     Your role:
-    1. Answer questions about {target_role}, career development, and learning
+    1. Answer questions about {user.target_role}, career development, and learning
     2. Provide encouragement and motivation
     3. Give practical advice based on their goal
     4. Keep responses conversational and supportive
@@ -725,10 +819,9 @@ def get_ai_chat_response(user_id: str, message: str) -> dict:
     messages = [{"role": "system", "content": system_prompt}]
 
     # Add recent chat history (last  6 messages to stay within token limits)
-    recent_history = chat_history[user_id][-6:]
-    for chat in recent_history:
-        messages.append({"role": "user", "content": chat["user"]})
-        messages.append({"role": "assistant", "content": chat["assistant"]})
+    for record in chat_history_records:
+        messages.append({"role": "user", "content": record.user_message})
+        messages.append({"role": "assistant", "content": record.assistant_response})
 
     # Add current message
     messages.append({"role": "user", "content": message})
@@ -751,16 +844,14 @@ def get_ai_chat_response(user_id: str, message: str) -> dict:
         response.raise_for_status()
         ai_response = response.json()["choices"][0]["message"]["content"]
 
-        # Store in chat history 
-        chat_history[user_id].append({
-            "user": message,
-            "assistant": ai_response,
-            "timestamp": datetime.now().isoformat()
-        })
-
-        #Let's keep only the last 20 conversations to manage memory
-        if len(chat_history[user_id]) > 20:
-            chat_history[user_id] = chat_history[user_id][-20:]
+       # Store in database
+        chat_record = ChatHistory(
+            user_id=user_id,
+            user_message=message,
+            assistant_response=ai_response
+        )
+        db.add(chat_record)
+        db.commit()
         
         return {
             "response": ai_response,
@@ -773,11 +864,10 @@ def get_ai_chat_response(user_id: str, message: str) -> dict:
             "timestamp": datetime.now().isoformat()
         }
 
-
 # API Endpoints
 
 @app.post("/api/generate_roadmap")
-def api_generate_roadmap(req: FullPipelineReq):
+def api_generate_roadmap(req: FullPipelineReq, db: Session = Depends (get_db)):
     """Generate initial roadmap"""
     try:
         # Generate roadmap with validation
@@ -805,15 +895,46 @@ def api_generate_roadmap(req: FullPipelineReq):
         
         # Store for user
         user_id = str(uuid4())
-        user_store[user_id] = roadmap
 
+        user = User(
+            user_id=user_id,
+            goal=req.goal,
+            target_role=req.target_role,
+            timeframe=req.timeframe,
+            hours_per_week=req.hours_per_week,
+            learning_style=req.learning_style,
+            learning_speed=req.learning_speed,
+            skill_level=req.skill_level
+        )
+        db.add(user)
+        
+        # Create roadmap record
+        roadmap_record = Roadmap(
+            user_id=user_id,
+            roadmap_data=roadmap
+        )
+        db.add(roadmap_record)
+
+        # Create progress record
+        progress = Progress(
+            user_id=user_id,
+            current_day=1,
+            current_week=1,
+            current_month=1,
+            total_tasks_completed=0
+        )
+        db.add(progress)
+        
+        db.commit()
+
+        
         # Print user ID clearly in terminal
         print("\n" + "="*50)
         print(f"Generated User ID: {user_id}")
         print(f"Goal: {req.goal}")
         print(f"Target Role: {req.target_role}")
         print("="*50 + "\n")
-
+        
         return {
             "success": True,
             "user_id": user_id,
@@ -828,30 +949,31 @@ def api_generate_roadmap(req: FullPipelineReq):
         )
     
 @app.get("/api/daily_task/{user_id}")
-def api_get_daily_task(user_id:str):
+def api_get_daily_task(user_id:str, db: Session = Depends(get_db)):
     """Get current daily task with motivation"""
-    if user_id not in user_store:
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if not user:
         raise HTTPException(404, "User not found")
     
-    task = get_current_daily_task(user_id)
+    task = get_current_daily_task(user_id, db)
     if not task:
         raise HTTPException(404, "No current task found")
     
     return task
 
 @app.post("/api/complete_task/{user_id}")
-def api_complete_task(user_id:str, completion: TaskCompletion):
+def api_complete_task(user_id:str, completion: TaskCompletion, db: Session = Depends(get_db)):
     """Mark current task as completed"""
-    if user_id not in user_store:
-        raise HTTPException(404, "user not found")
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if not user:
+        raise HTTPException(404, "User not found")
     
     # Get current task ID
-
-    current_task = get_current_daily_task(user_id)
+    current_task = get_current_daily_task(user_id, db)
     if not current_task or "task_id" not in current_task:
         raise HTTPException(404, "No current task to complete")
     
-    result = mark_task_completed(user_id, current_task["task_id"])
+    result = mark_task_completed(user_id, current_task["task_id"], db)
     
     if "error" in result: 
         raise HTTPException(400, result["error"])
@@ -860,42 +982,49 @@ def api_complete_task(user_id:str, completion: TaskCompletion):
 
 
 @app.get("/api/week_videos/{user_id}")
-def api_get_week_videos(user_id: str):
+def api_get_week_videos(user_id: str, db: Session = Depends(get_db)):
     """Get Youtube videos for current week"""
-    if user_id not in user_store:
-        raise HTTPException(404, "user not found")
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if not user:
+        raise HTTPException(404, "User not found")
     
-    videos = get_current_week_videos(user_id)
-
+    videos = get_current_week_videos(user_id, db)
     if "error" in videos:
         raise HTTPException(404, videos["error"])
     
     return videos
 
 @app.post("/api/chat/{user_id}")
-async def api_chat(user_id: str, chat_msg: ChatMessage):
+async def api_chat(user_id: str, chat_msg: ChatMessage, db: Session = Depends(get_db)):
     """Chat with AI assistant"""
-    if user_id not in user_store:
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if not user:
         raise HTTPException(404, "User not found")
 
-    response = get_ai_chat_response(user_id, chat_msg.message) 
+    response = get_ai_chat_response(user_id, chat_msg.message, db) 
     if "error" in response:
         raise HTTPException(400, response["error"])
     
     return response
 
 @app.get("/api/user_progress/{user_id}")
-def api_get_user_progress(user_id: str):
+def api_get_user_progress(user_id: str, db: Session = Depends(get_db)):
     """Get user's overall progress"""
-    if user_id not in user_store:
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if not user:
         raise HTTPException(404, "User not found")
     
-    roadmap = user_store[user_id]
-    progress = roadmap.get("progress", {})
+    progress = db.query(Progress).filter(Progress.user_id == user_id).first()
+    roadmap_record = db.query(Roadmap).filter(Roadmap.user_id == user_id).first()
+    
+    if not progress or not roadmap_record:
+        raise HTTPException(404, "Progress data not found")
+
+    roadmap = roadmap_record.roadmap_data
 
     # Calculate completion percentage
     total_tasks = 0
-    completed_tasks = progress.get("total_tasks_completed", 0)
+    completed_tasks = progress.total_tasks_completed
 
     for month in roadmap.get("roadmap", []):
         for week in month["weeks"]:
@@ -904,35 +1033,32 @@ def api_get_user_progress(user_id: str):
     completion_percentage = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
 
     return {
-        "goal": roadmap.get("goal", ""),
+        "goal": user.goal,
         "total_tasks": total_tasks,
         "completed_tasks": completed_tasks,
         "completion_percentage": round(completion_percentage, 1),
-        "current_month": progress.get("current_month", 1),
-        "current_week": progress.get("current_week", 1),
-        "current_day": progress.get("current_day", 1),
-        "start_date": progress.get("start_date", 1)
+        "current_month": progress.current_month,
+        "current_week": progress.current_week,
+        "current_day": progress.current_day,
+        "start_date": progress.start_date.isoformat() if progress.start_date else None
     }
 
-
 @app.get("/api/health")
-def health_check():
+def health_check(db: Session = Depends(get_db)):
+    user_count = db.query(User).count()
     return {
         "status": "healthy",
-        "active_users": len(user_store),
+        "active_users": user_count,
         "groq_configured": bool(GROQ_API_KEY),
         "youtube_configured": bool(YOUTUBE_API_KEY)
     }
 
-
-#  Legacy endpoint for compatibility
+# Legacy endpoint for compatibility
 @app.post("/api/full_pipeline")
-def api_full_pipeline(req: FullPipelineReq):
+def api_full_pipeline(req: FullPipelineReq, db: Session = Depends(get_db)):
     """Legacy endpoint - redirects to new generate_roadmap"""
-    return api_generate_roadmap(req)
+    return api_generate_roadmap(req, db)
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("agent_orchestra:app", host="127.0.0.1", port=8000, reload=True)
-
-
