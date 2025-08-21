@@ -624,12 +624,12 @@ def advance_to_next_task(roadmap: dict, progress: Progress):
                     for task in week.get("daily_tasks", []):
                         if ((month["month"] > current_month) or (week["week"] > current_week) or (task["day"] > current_day)) and not task.get("completed", False):
 
-                            progress["current_month"] = month["month"]
-                            progress["current_week"] = week["week"]
-                            progress["current_day"] = task["day"]
+                            progress.current_month = month["month"]
+                            progress.current_week = week["week"]
+                            progress.current_day = task["day"]
                             return
     #If no more tasks, mark as completed
-    progress["current_day"] = -1  #to indicate completion
+    progress.current_day = -1  #to indicate completion
 
 # YOUTUBE VIDEO RECOMMENDATION
 def get_current_week_videos(user_id: str, db: Session) -> dict:
@@ -643,8 +643,8 @@ def get_current_week_videos(user_id: str, db: Session) -> dict:
         return {"error": "User not found"}
 
     roadmap = roadmap_record.roadmap_data
-    current_month = progress.get("current_month", 1)
-    current_week = progress.get("current_week", 1)
+    current_month = progress.current_month
+    current_week = progress.current_week
 
     # Create a request object from stored roadmap data
     user = db.query(User).filter(User.user_id == user_id).first()
@@ -1065,5 +1065,6 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("agent_orchestra:app", host="0.0.0.0", port=port)
+
 
 
