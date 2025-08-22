@@ -238,7 +238,7 @@ def llm_generate_roadmap(req: FullPipelineReq) -> dict:
                         "Content-Type": "application/json"
                     },
                     json={
-                        "model": "qwen/qwen3-32b",
+                        "model": "deepseek-r1-distill-llama-70b",
                         "messages": [
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_prompt}
@@ -838,7 +838,7 @@ def get_ai_chat_response(user_id: str, message: str, db: Session) -> dict:
                     "Content-Type": "application/json"
                 },
                 json={
-                    "model": "qwen/qwen3-32b",
+                    "model": "deepseek-r1-distill-llama-70b",
                     "messages": messages,
                     "temperature": 1,
                     "max_tokens": 20000
@@ -1117,4 +1117,5 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("agent_orchestra:app", host="0.0.0.0", port=port)
+
 
