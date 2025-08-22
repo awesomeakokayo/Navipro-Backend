@@ -110,6 +110,7 @@ class ChatMessage(BaseModel):
 
 class TaskCompletion(BaseModel):
     task_completed: bool = True
+    task_id: Optional[str] = None
 
 class FullPipelineReq(BaseModel):
     goal: str
@@ -992,22 +993,46 @@ def api_get_daily_task(user_id:str, db: Session = Depends(get_db)):
 
 @app.post("/api/complete_task/{user_id}")
 def api_complete_task(user_id:str, completion: TaskCompletion, db: Session = Depends(get_db)):
-    """Mark current task as completed"""
+    """Mark current task as completed If task_id is provided, mark that task; otherwise use the current daily task."""
     user = db.query(User).filter(User.user_id == user_id).first()
     if not user:
         raise HTTPException(404, "User not found")
     
-    # Get current task ID
-    current_task = get_current_daily_task(user_id, db)
-    if not current_task or "task_id" not in current_task:
-        raise HTTPException(404, "No current task to complete")
-    
-    result = mark_task_completed(user_id, current_task["task_id"], db)
-    
-    if "error" in result: 
+     # If client provided a task_id, use it; otherwise use current daily task
+    target_task_id = completion.task_id
+    if not target_task_id:
+        current_task = get_current_daily_task(user_id, db)
+        if not current_task or "task_id" not in current_task:
+            raise HTTPException(404, "No current task to complete")
+        target_task_id = current_task["task_id"]
+
+    result = mark_task_completed(user_id, target_task_id, db)
+
+    if "error" in result:
         raise HTTPException(400, result["error"])
-    
-    return result
+
+    # Fetch updated roadmap and progress to return to client for immediate UI sync
+    roadmap_record = db.query(Roadmap).filter(Roadmap.user_id == user_id).first()
+    progress = db.query(Progress).filter(Progress.user_id == user_id).first()
+
+    updated_roadmap = roadmap_record.roadmap_data if roadmap_record else {}
+    if progress:
+        updated_roadmap["progress"] = {
+            "current_day": progress.current_day,
+            "current_week": progress.current_week,
+            "current_month": progress.current_month,
+            "total_tasks_completed": progress.total_tasks_completed,
+            "start_date": progress.start_date.isoformat() if progress.start_date else None
+        }
+
+    # return original result plus the fresh snapshot
+    response_payload = {
+        **result,
+        "roadmap": updated_roadmap,
+        "progress": updated_roadmap.get("progress", {})
+    }
+
+    return response_payload
 
 
 @app.get("/api/week_videos/{user_id}")
@@ -1092,7 +1117,3 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("agent_orchestra:app", host="0.0.0.0", port=port)
-
-
-
-
