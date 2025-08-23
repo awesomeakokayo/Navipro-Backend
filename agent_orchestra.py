@@ -838,7 +838,7 @@ def get_ai_chat_response(user_id: str, message: str, db: Session) -> dict:
                     "Content-Type": "application/json"
                 },
                 json={
-                    "model": "deepseek-r1-distill-llama-70b",
+                    "model": "openai/gpt-oss-120b",
                     "messages": messages,
                     "temperature": 1,
                     "max_tokens": 20000
@@ -1117,5 +1117,6 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("agent_orchestra:app", host="0.0.0.0", port=port)
+
 
 
