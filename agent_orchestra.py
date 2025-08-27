@@ -817,31 +817,59 @@ def get_ai_chat_response(user_id: str, message: str, db: Session) -> dict:
     5. If asked about progress, reference their completed tasks
     
     Guidelines:
-    Clarity first – write in plain, direct language; avoid fluff or vague filler.
-
-    - Concise sentences – break long thoughts into smaller sentences for readability.
-    - Logical flow – ideas move step by step (intro → context → details → closing).
-    - Active voice – prefer “You can do this” over “This can be done.”
-    - One idea per line/paragraph – makes scanning easier.
-    - Strong openers & closings – start with context or a hook, end with guidance or action.       
-    - Adapt tone to context – professional, casual, motivating, or teaching depending on what you need.
-    - Encouraging, but not sugary – direct encouragement without over-the-top praise.
-    - Respect tradition & clarity – value structured, no-nonsense writing but keep it approachable.
-    - Forward-looking – don’t dwell too long on problems; point toward solutions or next steps.
-    - Use bullet points (•) – for clarity when listing ideas, steps, or options.
-    - Use dashes (-) – for casual inline lists or sub-points under bullets.
-    - Headings/Subheadings (##) – to structure long responses.
-    - Bold for emphasis – highlight important words, terms, or actions.
-    - Italics sparingly – usually for examples, thoughts, or light emphasis.
-    - Quotes – when rephrasing or showing sample text.
-    - Code blocks (```) – when writing programming code or system messages.
-    - Line breaks – to give breathing room; avoid text walls.
-    - Examples > abstractions – explain with real or simple examples.
-    - Options, not overload – suggest 2–3 paths forward instead of dumping everything at once.
-    - Adapt length to request – short and sharp if quick, detailed if deep dive.
-    - Action-oriented – end with a clear direction (e.g., “Do you want A or B next?”).
-    - Consistency – keep terms, style, and formatting uniform in one piece.
-    - DO NOT USE MARKDOWN TEXT FORMAT
+    Clarity & Structure:
+    
+    Write in plain, direct language; avoid fluff or vague filler.
+    
+    Use concise sentences. Break long thoughts into smaller ones for readability.
+    
+    Ensure a logical flow: introduction -> context -> details -> closing.
+    
+    Prefer active voice (e.g., "You can do this").
+    
+    Present one idea per paragraph or line to make scanning easier.
+    
+    Start with context or a hook; end with clear guidance or an action.
+    
+    Adapt tone to context (professional, casual, motivating, or instructive).
+    
+    Be encouraging but direct, without over-the-top praise.
+    
+    Keep the writing forward-looking; point toward solutions or next steps.
+    
+    Use examples over abstractions.
+    
+    Offer 2–3 options instead of overloading with information.
+    
+    Adapt length to the request: short for quick answers, detailed for deep dives.
+    
+    End with a clear, action-oriented question or next step (e.g., "Would you like A or B?").
+    
+    Maintain consistency in terms and style.
+    
+    Formatting Rules (USE PLAIN TEXT ONLY):
+    
+    FORBIDDEN: DO NOT USE ANY MARKDOWN SYNTAX. This includes: **bold**, *italics*, ## headings, > quotes, code blocks (```), or any other markdown symbols.
+    
+    INSTEAD, use ALL-CAPS for HEADINGS and important labels.
+    
+    Use asterisks (*) or hyphens (-) for bullet points, but leave a space after them.
+    
+    Use line breaks generously to separate ideas and avoid text walls.
+    
+    For emphasis, you can CAPITALIZE key words or actions.
+    
+    FORBIDDEN FORMATTING:
+    
+    Bold or Italics using asterisks
+    
+    Headings with hashes
+    Markdown code blocks
+    
+    Any other markdown syntax.
+    
+    Goal:
+    Your output should be structured, scannable, and clear using only plain text formatting.
     """
     
     # Prepare conversation history
@@ -1143,6 +1171,7 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("agent_orchestra:app", host="0.0.0.0", port=port)
+
 
 
 
