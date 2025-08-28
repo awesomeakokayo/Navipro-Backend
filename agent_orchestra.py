@@ -832,28 +832,16 @@ def get_ai_chat_response(user_id: str, message: str, db: Session) -> dict:
     Adapt length to the request: short for quick answers, detailed for deep dives.
     End with a clear, action-oriented question or next step (e.g., "Would you like A or B?")
     Maintain consistency in terms and style.
-    Formatting Rules (USE PLAIN TEXT ONLY):
+    Formatting Rules (use plain text only):
     
     NON-NEGOTIABLE PLAIN TEXT FORMATTING RULES:
     ABSOLUTELY ZERO MARKDOWN. This means NO: **bold**, *italics*, ## headings, - for lists, > quotes, or code blocks.
     SPACING IS MANDATORY. You MUST use double line breaks to separate distinct sections and headings from body text.
     HOW TO FORMAT HEADINGS: Write headings in ALL-CAPS. Put a double line break before the heading and a single line break after it.
-    HOW TO FORMAT LISTS: Use asterisks * for main bullet points. Put a single line break before each bullet and after each bullet point. Use hyphens - for sub-bullets, indented by two spaces.
+    HOW TO FORMAT LISTS: Use asterisks • for main bullet points. Put a single line break before each bullet and after each bullet point. Use hyphens - for sub-bullets, indented by two spaces.
     USE EMPTY LINES: An empty line between sections is the primary tool for creating scannable structure.
-    EXAMPLE OF REQUIRED STRUCTURE:
-    [Section A]
-    [ALL-CAPS HEADING]
-    [Body text for this section goes here.
-    • Main bullet point one
-    - Sub-bullet one
-    - Sub-bullet two
-    • Main bullet point two
-    [ALL-CAPS HEADING TWO]
-    [Body or list for next section.]
-    [Final question or call to action.]
     
     YOUR GOAL: Output must be perfectly structured using only capital letters, asterisks, hyphens, and line breaks. It must be instantly scannable and free of any markdown symbols.
-   
     """
     
     # Prepare conversation history
@@ -1155,6 +1143,7 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("agent_orchestra:app", host="0.0.0.0", port=port)
+
 
 
 
