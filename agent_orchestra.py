@@ -818,58 +818,48 @@ def get_ai_chat_response(user_id: str, message: str, db: Session) -> dict:
     
     Guidelines:
     Clarity & Structure:
-    
     Write in plain, direct language; avoid fluff or vague filler.
-    
     Use concise sentences. Break long thoughts into smaller ones for readability.
-    
     Ensure a logical flow: introduction -> context -> details -> closing.
-    
     Prefer active voice (e.g., "You can do this").
-    
     Present one idea per paragraph or line to make scanning easier.
-    
     Start with context or a hook; end with clear guidance or an action.
-    
     Adapt tone to context (professional, casual, motivating, or instructive).
-    
     Be encouraging but direct, without over-the-top praise.
-    
     Keep the writing forward-looking; point toward solutions or next steps.
-    
     Use examples over abstractions.
-    
     Offer 2–3 options instead of overloading with information.
-    
     Adapt length to the request: short for quick answers, detailed for deep dives.
-    
-    End with a clear, action-oriented question or next step (e.g., "Would you like A or B?").
-    
+    End with a clear, action-oriented question or next step (e.g., "Would you like A or B?")
     Maintain consistency in terms and style.
-    
     Formatting Rules (USE PLAIN TEXT ONLY):
     
-    FORBIDDEN: DO NOT USE ANY MARKDOWN SYNTAX. This includes: **bold**, *italics*, ## headings, > quotes, code blocks (```), or any other markdown symbols.
+    NON-NEGOTIABLE PLAIN TEXT FORMATTING RULES:
+    ABSOLUTELY ZERO MARKDOWN. This means NO: **bold**, *italics*, ## headings, - for lists, > quotes, or code blocks.
+    SPACING IS MANDATORY. You MUST use double line breaks to separate distinct sections and headings from body text.
+    HOW TO FORMAT HEADINGS: Write headings in ALL-CAPS. Put a double line break before the heading and a single line break after it.
+    HOW TO FORMAT LISTS: Use asterisks * for main bullet points. Put a single line break before each bullet and after each bullet point. Use hyphens - for sub-bullets, indented by two spaces.
+    USE EMPTY LINES: An empty line between sections is the primary tool for creating scannable structure.
+    EXAMPLE OF REQUIRED STRUCTURE:
+    [Section A]
     
-    INSTEAD, use ALL-CAPS for HEADINGS and important labels.
+    [ALL-CAPS HEADING]
+    [Body text for this section goes here.
     
-    Use asterisks (*) or hyphens (-) for bullet points, but leave a space after them.
+    • Main bullet point one
     
-    Use line breaks generously to separate ideas and avoid text walls.
+    ° Sub-bullet one
     
-    For emphasis, you can CAPITALIZE key words or actions.
+    ° Sub-bullet two
     
-    FORBIDDEN FORMATTING:
+    • Main bullet point two
     
-    Bold or Italics using asterisks
+    [ALL-CAPS HEADING TWO]
+    [Body or list for next section.]
     
-    Headings with hashes
-    Markdown code blocks
+    [Final question or call to action.]
     
-    Any other markdown syntax.
-    
-    Goal:
-    Your output should be structured, scannable, and clear using only plain text formatting.
+    YOUR GOAL: Output must be perfectly structured using only capital letters, asterisks, hyphens, and line breaks. It must be instantly scannable and free of any markdown symbols.
     """
     
     # Prepare conversation history
@@ -1171,6 +1161,7 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("agent_orchestra:app", host="0.0.0.0", port=port)
+
 
 
 
