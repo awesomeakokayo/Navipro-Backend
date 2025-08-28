@@ -207,12 +207,17 @@ def llm_generate_roadmap(req: FullPipelineReq) -> dict:
     {
         "month_title": "JavaScript Fundamentals",
         "weeks": [{
-            "focus": "DOM Manipulation",
-            "daily_tasks": [{
-                "title": "Learn querySelector Methods",
-                "description": "Complete MDN's DOM manipulation tutorial section on querySelectorAll"
-            }]
-        }]
+        "focus": "DOM Manipulation",
+        "daily_tasks": [{
+            "title": "Learn querySelector Methods",
+            "goal": "build your skill in selecting and handling multiple elements in the DOM",
+            "resources": [
+                "https://developer.mozilla.org/en-US/docs/Web/API/Document/querySelectorAll"
+            ],
+            "description": "Complete MDN's DOM manipulation tutorial section on querySelectorAll"
+    }]
+}]
+
     }
     """
     
@@ -1143,6 +1148,7 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("agent_orchestra:app", host="0.0.0.0", port=port)
+
 
 
 
