@@ -5,5 +5,7 @@ httpx==0.25.2
 sqlalchemy==1.4.50
 psycopg2-binary==2.9.10
 python-multipart==0.0.6
+PyJWT==2.8.0
+
 
 
