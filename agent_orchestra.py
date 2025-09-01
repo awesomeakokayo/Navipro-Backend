@@ -527,7 +527,7 @@ def normalize_roadmap_structure(roadmap_data: dict, months: int = 3, weeks_per_m
 
 
 # DAILY TASK SYSTEM
-def get_current_daily_task(user_id: str = Depends(get_current_user), db: Session) -> dict:
+def get_current_daily_task(db: Session, user_id: str = Depends(get_current_user)) -> dict:
     """Get the current daily task for the user with motivation"""
 
     progress = db.query(Progress).filter(Progress.user_id == user_id).first()
@@ -594,7 +594,7 @@ def generate_motivational_message(goal: str, task_title: str, completed_task: in
     return random.choice(messages)
 
 
-def mark_task_completed(user_id: str = Depends(get_current_user), task_id: str, db: Session) -> dict:
+def mark_task_completed(task_id: str, db: Session, user_id: str = Depends(get_current_user)) -> dict:
     """Mark current task as completed and move to next"""
 
     # Get user progress and roadmap
@@ -657,7 +657,7 @@ def advance_to_next_task(roadmap: dict, progress: Progress):
     progress.current_day = -1  #to indicate completion
 
 # YOUTUBE VIDEO RECOMMENDATION
-def get_current_week_videos(user_id: str = Depends(get_current_user), db: Session) -> dict:
+def get_current_week_videos(db: Session, user_id: str = Depends(get_current_user)) -> dict:
     """Get Youtube videos for current week's focus"""
 
      # Get user progress and roadmap
@@ -797,7 +797,7 @@ def get_sample_videos(query: str) -> list:
     ]
 
 # CHATBOT SYSTEM
-def get_ai_chat_response(user_id: str = Depends(get_current_user), message: str, db: Session) -> dict:
+def get_ai_chat_response(message: str, db: Session, user_id: str = Depends(get_current_user)) -> dict:
     """Generate AI chat response based on user's roadmap context"""
 
     # Get user data
@@ -912,7 +912,7 @@ def get_ai_chat_response(user_id: str = Depends(get_current_user), message: str,
 # API Endpoints
 
 @app.post("/api/generate_roadmap")
-def api_generate_roadmap(req: FullPipelineReq, user_id: (str = Depends(get_current_user)), db: Session = Depends (get_db)):
+def api_generate_roadmap(req: FullPipelineReq, db: Session = Depends (get_db), user_id: str = Depends(get_current_user)):
     """Generate initial roadmap"""
     try:
         # Generate roadmap with validation
@@ -991,7 +991,7 @@ def api_generate_roadmap(req: FullPipelineReq, user_id: (str = Depends(get_curre
         )
 
 @app.get("/api/user_roadmap")
-def api_get_user_roadmap(user_id: str = Depends(get_current_user), db: Session = Depends(get_db)):
+def api_get_user_roadmap(db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
     """Get user's roadmap from database"""
     user = db.query(User).filter(User.user_id == user_id).first()
     if not user:
@@ -1018,7 +1018,7 @@ def api_get_user_roadmap(user_id: str = Depends(get_current_user), db: Session =
     return roadmap_data
     
 @app.get("/api/daily_task")
-def api_get_daily_task(user_id:str = Depends(get_current_user), db: Session = Depends(get_db)):
+def api_get_daily_task(db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
     """Get current daily task with motivation"""
     user = db.query(User).filter(User.user_id == user_id).first()
     if not user:
@@ -1031,7 +1031,7 @@ def api_get_daily_task(user_id:str = Depends(get_current_user), db: Session = De
     return task
 
 @app.post("/api/complete_task")
-def api_complete_task(user_id:str = Depends(get_current_user), completion: TaskCompletion, db: Session = Depends(get_db)):
+def api_complete_task(completion: TaskCompletion, db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
     """Mark current task as completed If task_id is provided, mark that task; otherwise use the current daily task."""
     user = db.query(User).filter(User.user_id == user_id).first()
     if not user:
@@ -1075,7 +1075,7 @@ def api_complete_task(user_id:str = Depends(get_current_user), completion: TaskC
 
 
 @app.get("/api/week_videos")
-def api_get_week_videos(user_id: str = Depends(get_current_user), db: Session = Depends(get_db)):
+def api_get_week_videos(db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
     """Get Youtube videos for current week"""
     user = db.query(User).filter(User.user_id == user_id).first()
     if not user:
@@ -1088,7 +1088,7 @@ def api_get_week_videos(user_id: str = Depends(get_current_user), db: Session = 
     return videos
 
 @app.post("/api/chat")
-async def api_chat(user_id: str = Depends(get_current_user), chat_msg: ChatMessage, db: Session = Depends(get_db)):
+async def api_chat(chat_msg: ChatMessage, db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
     """Chat with AI assistant"""
     user = db.query(User).filter(User.user_id == user_id).first()
     if not user:
@@ -1101,7 +1101,7 @@ async def api_chat(user_id: str = Depends(get_current_user), chat_msg: ChatMessa
     return response
 
 @app.get("/api/user_progress")
-def api_get_user_progress(user_id: str = Depends(get_current_user), db: Session = Depends(get_db)):
+def api_get_user_progress(db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
     """Get user's overall progress"""
     user = db.query(User).filter(User.user_id == user_id).first()
     if not user:
