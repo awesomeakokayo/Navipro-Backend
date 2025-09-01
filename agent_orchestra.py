@@ -6,6 +6,7 @@ from uuid import uuid4
 from datetime import datetime, timedelta
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import httpx
@@ -13,6 +14,7 @@ import re
 from sqlalchemy import create_engine, Column, String, Integer, Boolean, DateTime, Text, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
+import jwt
 
 load_dotenv()
 
@@ -21,6 +23,7 @@ GROQ_API_KEY  = os.getenv("GROQ_API_KEY")
 GROQ_BASE_URL = os.getenv("GROQ_BASE_URL")
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 DATABASE_URL = os.getenv("DATABASE_URL")
+AUTH_SECRET = os.getenv("AUTH_SECRET")
 
 # Use DATABASE_URL from environment, fallback to SQLite if not provided
 if DATABASE_URL:
@@ -108,12 +111,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+security = HTTPBearer()
 
 from typing import Optional, List
 
 class ChatMessage(BaseModel):
     message: str
-    user_id: str
+    user_id: str = Depends(get_current_user)
 
 class TaskCompletion(BaseModel):
     task_completed: bool = True
@@ -127,6 +131,13 @@ class FullPipelineReq(BaseModel):
     learning_style: Optional[str] = "visual"
     learning_speed: Optional[str] = "average"
     skill_level: Optional[str] = "beginner"
+
+def get_current_user(token: str = Depends(security)):
+    try:
+        payload = jwt.decode(token.credentials, AUTH_SECRET, algorithms=["HS256])
+        return payload["user_id"] #user_id from auth backend
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 
 def regroup_by_year(flat_months: list[dict], months_per_year: int = 12) -> list[dict]:
@@ -516,7 +527,7 @@ def normalize_roadmap_structure(roadmap_data: dict, months: int = 3, weeks_per_m
 
 
 # DAILY TASK SYSTEM
-def get_current_daily_task(user_id: str, db: Session) -> dict:
+def get_current_daily_task(user_id: str = Depends(get_current_user), db: Session) -> dict:
     """Get the current daily task for the user with motivation"""
 
     progress = db.query(Progress).filter(Progress.user_id == user_id).first()
@@ -583,7 +594,7 @@ def generate_motivational_message(goal: str, task_title: str, completed_task: in
     return random.choice(messages)
 
 
-def mark_task_completed(user_id: str, task_id: str, db: Session) -> dict:
+def mark_task_completed(user_id: str = Depends(get_current_user), task_id: str, db: Session) -> dict:
     """Mark current task as completed and move to next"""
 
     # Get user progress and roadmap
@@ -646,7 +657,7 @@ def advance_to_next_task(roadmap: dict, progress: Progress):
     progress.current_day = -1  #to indicate completion
 
 # YOUTUBE VIDEO RECOMMENDATION
-def get_current_week_videos(user_id: str, db: Session) -> dict:
+def get_current_week_videos(user_id: str = Depends(get_current_user), db: Session) -> dict:
     """Get Youtube videos for current week's focus"""
 
      # Get user progress and roadmap
@@ -786,7 +797,7 @@ def get_sample_videos(query: str) -> list:
     ]
 
 # CHATBOT SYSTEM
-def get_ai_chat_response(user_id: str, message: str, db: Session) -> dict:
+def get_ai_chat_response(user_id: str = Depends(get_current_user), message: str, db: Session) -> dict:
     """Generate AI chat response based on user's roadmap context"""
 
     # Get user data
@@ -901,7 +912,7 @@ def get_ai_chat_response(user_id: str, message: str, db: Session) -> dict:
 # API Endpoints
 
 @app.post("/api/generate_roadmap")
-def api_generate_roadmap(req: FullPipelineReq, db: Session = Depends (get_db)):
+def api_generate_roadmap(req: FullPipelineReq, user_id: (str = Depends(get_current_user)), db: Session = Depends (get_db)):
     """Generate initial roadmap"""
     try:
         # Generate roadmap with validation
@@ -927,9 +938,6 @@ def api_generate_roadmap(req: FullPipelineReq, db: Session = Depends (get_db)):
         # Add IDs and metadata
         roadmap = enhance_roadmap_structure(roadmap)
         
-        # Store for user
-        user_id = str(uuid4())
-
         user = User(
             user_id=user_id,
             goal=req.goal,
@@ -964,7 +972,7 @@ def api_generate_roadmap(req: FullPipelineReq, db: Session = Depends (get_db)):
         
         # Print user ID clearly in terminal
         print("\n" + "="*50)
-        print(f"Generated User ID: {user_id}")
+        print(f"Generated User ID: str = Depends(get_current_user)")
         print(f"Goal: {req.goal}")
         print(f"Target Role: {req.target_role}")
         print("="*50 + "\n")
@@ -982,8 +990,8 @@ def api_generate_roadmap(req: FullPipelineReq, db: Session = Depends (get_db)):
             detail=f"Failed to generate roadmap: {str(e)}"
         )
 
-@app.get("/api/user_roadmap/{user_id}")
-def api_get_user_roadmap(user_id: str, db: Session = Depends(get_db)):
+@app.get("/api/user_roadmap)
+def api_get_user_roadmap(user_id: str = Depends(get_current_user), db: Session = Depends(get_db)):
     """Get user's roadmap from database"""
     user = db.query(User).filter(User.user_id == user_id).first()
     if not user:
@@ -1009,8 +1017,8 @@ def api_get_user_roadmap(user_id: str, db: Session = Depends(get_db)):
     
     return roadmap_data
     
-@app.get("/api/daily_task/{user_id}")
-def api_get_daily_task(user_id:str, db: Session = Depends(get_db)):
+@app.get("/api/daily_task")
+def api_get_daily_task(user_id:str = Depends(get_current_user), db: Session = Depends(get_db)):
     """Get current daily task with motivation"""
     user = db.query(User).filter(User.user_id == user_id).first()
     if not user:
@@ -1022,8 +1030,8 @@ def api_get_daily_task(user_id:str, db: Session = Depends(get_db)):
     
     return task
 
-@app.post("/api/complete_task/{user_id}")
-def api_complete_task(user_id:str, completion: TaskCompletion, db: Session = Depends(get_db)):
+@app.post("/api/complete_task")
+def api_complete_task(user_id:str = Depends(get_current_user), completion: TaskCompletion, db: Session = Depends(get_db)):
     """Mark current task as completed If task_id is provided, mark that task; otherwise use the current daily task."""
     user = db.query(User).filter(User.user_id == user_id).first()
     if not user:
@@ -1066,8 +1074,8 @@ def api_complete_task(user_id:str, completion: TaskCompletion, db: Session = Dep
     return response_payload
 
 
-@app.get("/api/week_videos/{user_id}")
-def api_get_week_videos(user_id: str, db: Session = Depends(get_db)):
+@app.get("/api/week_videos")
+def api_get_week_videos(user_id: str = Depends(get_current_user), db: Session = Depends(get_db)):
     """Get Youtube videos for current week"""
     user = db.query(User).filter(User.user_id == user_id).first()
     if not user:
@@ -1079,8 +1087,8 @@ def api_get_week_videos(user_id: str, db: Session = Depends(get_db)):
     
     return videos
 
-@app.post("/api/chat/{user_id}")
-async def api_chat(user_id: str, chat_msg: ChatMessage, db: Session = Depends(get_db)):
+@app.post("/api/chat")
+async def api_chat(user_id: str = Depends(get_current_user), chat_msg: ChatMessage, db: Session = Depends(get_db)):
     """Chat with AI assistant"""
     user = db.query(User).filter(User.user_id == user_id).first()
     if not user:
@@ -1092,8 +1100,8 @@ async def api_chat(user_id: str, chat_msg: ChatMessage, db: Session = Depends(ge
     
     return response
 
-@app.get("/api/user_progress/{user_id}")
-def api_get_user_progress(user_id: str, db: Session = Depends(get_db)):
+@app.get("/api/user_progress")
+def api_get_user_progress(user_id: str = Depends(get_current_user), db: Session = Depends(get_db)):
     """Get user's overall progress"""
     user = db.query(User).filter(User.user_id == user_id).first()
     if not user:
@@ -1148,6 +1156,7 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("agent_orchestra:app", host="0.0.0.0", port=port)
+
 
 
 
