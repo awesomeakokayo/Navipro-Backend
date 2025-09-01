@@ -117,7 +117,7 @@ from typing import Optional, List
 
 class ChatMessage(BaseModel):
     message: str
-    user_id: str = Depends(get_current_user)
+    user_id: str
 
 class TaskCompletion(BaseModel):
     task_completed: bool = True
@@ -1156,6 +1156,7 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("agent_orchestra:app", host="0.0.0.0", port=port)
+
 
 
 
