@@ -134,7 +134,7 @@ class FullPipelineReq(BaseModel):
 
 def get_current_user(token: str = Depends(security)):
     try:
-        payload = jwt.decode(token.credentials, AUTH_SECRET, algorithms=["HS256])
+        payload = jwt.decode(token.credentials, AUTH_SECRET, algorithms=["HS256"])
         return payload["user_id"] #user_id from auth backend
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
@@ -1156,6 +1156,7 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("agent_orchestra:app", host="0.0.0.0", port=port)
+
 
 
 
