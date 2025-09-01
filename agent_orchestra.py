@@ -990,7 +990,7 @@ def api_generate_roadmap(req: FullPipelineReq, user_id: (str = Depends(get_curre
             detail=f"Failed to generate roadmap: {str(e)}"
         )
 
-@app.get("/api/user_roadmap)
+@app.get("/api/user_roadmap")
 def api_get_user_roadmap(user_id: str = Depends(get_current_user), db: Session = Depends(get_db)):
     """Get user's roadmap from database"""
     user = db.query(User).filter(User.user_id == user_id).first()
@@ -1156,6 +1156,7 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("agent_orchestra:app", host="0.0.0.0", port=port)
+
 
 
 
