@@ -4,9 +4,8 @@ import zlib
 import json
 from uuid import uuid4
 from datetime import datetime, timedelta
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPBearer
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import httpx
@@ -14,7 +13,6 @@ import re
 from sqlalchemy import create_engine, Column, String, Integer, Boolean, DateTime, Text, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
-import jwt
 
 load_dotenv()
 
@@ -109,9 +107,8 @@ app.add_middleware(
     allow_origins=["https://naviprototype.netlify.app", "https://naviproai-1.onrender.com"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*", "user_id"],
 )
-security = HTTPBearer()
 
 from typing import Optional, List
 
@@ -132,12 +129,15 @@ class FullPipelineReq(BaseModel):
     learning_speed: Optional[str] = "average"
     skill_level: Optional[str] = "beginner"
 
-def get_current_user(token: str = Depends(security)):
+def get_current_user(x_user_id: Optional[str] = Header(None)):
     try:
-        payload = jwt.decode(token.credentials, AUTH_SECRET, algorithms=["HS256"])
-        return payload["user_id"] #user_id from auth backend
+        if not x_user_id:
+            raise HTTPException(status_code=401, detail="User ID header missing")
+        
+        # Return the user_id directly from the header
+        return x_user_id
     except Exception:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+        raise HTTPException(status_code=401, detail="Invalid or missing user ID")
 
 
 def regroup_by_year(flat_months: list[dict], months_per_year: int = 12) -> list[dict]:
@@ -527,7 +527,7 @@ def normalize_roadmap_structure(roadmap_data: dict, months: int = 3, weeks_per_m
 
 
 # DAILY TASK SYSTEM
-def get_current_daily_task(db: Session, user_id: str = Depends(get_current_user)) -> dict:
+def get_current_daily_task(db: Session, user_id: str) -> dict:
     """Get the current daily task for the user with motivation"""
 
     progress = db.query(Progress).filter(Progress.user_id == user_id).first()
@@ -594,7 +594,7 @@ def generate_motivational_message(goal: str, task_title: str, completed_task: in
     return random.choice(messages)
 
 
-def mark_task_completed(task_id: str, db: Session, user_id: str = Depends(get_current_user)) -> dict:
+def mark_task_completed(task_id: str, db: Session, user_id: str) -> dict:
     """Mark current task as completed and move to next"""
 
     # Get user progress and roadmap
@@ -657,7 +657,7 @@ def advance_to_next_task(roadmap: dict, progress: Progress):
     progress.current_day = -1  #to indicate completion
 
 # YOUTUBE VIDEO RECOMMENDATION
-def get_current_week_videos(db: Session, user_id: str = Depends(get_current_user)) -> dict:
+def get_current_week_videos(db: Session, user_id: str) -> dict:
     """Get Youtube videos for current week's focus"""
 
      # Get user progress and roadmap
@@ -797,7 +797,7 @@ def get_sample_videos(query: str) -> list:
     ]
 
 # CHATBOT SYSTEM
-def get_ai_chat_response(message: str, db: Session, user_id: str = Depends(get_current_user)) -> dict:
+def get_ai_chat_response(message: str, db: Session, user_id: str) -> dict:
     """Generate AI chat response based on user's roadmap context"""
 
     # Get user data
@@ -912,7 +912,7 @@ def get_ai_chat_response(message: str, db: Session, user_id: str = Depends(get_c
 # API Endpoints
 
 @app.post("/api/generate_roadmap")
-def api_generate_roadmap(req: FullPipelineReq, db: Session = Depends (get_db), user_id: str = Depends(get_current_user)):
+def api_generate_roadmap(req: FullPipelineReq, db: Session = Depends (get_db), user_id: str = Depends(get_current_user))):
     """Generate initial roadmap"""
     try:
         # Generate roadmap with validation
@@ -972,7 +972,7 @@ def api_generate_roadmap(req: FullPipelineReq, db: Session = Depends (get_db), u
         
         # Print user ID clearly in terminal
         print("\n" + "="*50)
-        print(f"Generated User ID: str = Depends(get_current_user)")
+        print(f"Generated User ID: {user_id}")
         print(f"Goal: {req.goal}")
         print(f"Target Role: {req.target_role}")
         print("="*50 + "\n")
@@ -1094,7 +1094,7 @@ async def api_chat(chat_msg: ChatMessage, db: Session = Depends(get_db), user_id
     if not user:
         raise HTTPException(404, "User not found")
 
-    response = get_ai_chat_response(user_id, chat_msg.message, db) 
+    response = get_ai_chat_response(user_id, chat_msg.message, db, user_id) 
     if "error" in response:
         raise HTTPException(400, response["error"])
     
@@ -1156,6 +1156,7 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("agent_orchestra:app", host="0.0.0.0", port=port)
+
 
 
 
