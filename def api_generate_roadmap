@@ -912,7 +912,7 @@ def get_ai_chat_response(message: str, db: Session, user_id: str) -> dict:
 # API Endpoints
 
 @app.post("/api/generate_roadmap")
-def api_generate_roadmap(req: FullPipelineReq, db: Session = Depends (get_db), user_id: str = Depends(get_current_user))):
+def api_generate_roadmap(req: FullPipelineReq, db: Session = Depends (get_db), user_id: str = Depends(get_current_user)):
     """Generate initial roadmap"""
     try:
         # Generate roadmap with validation
@@ -1156,6 +1156,7 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("agent_orchestra:app", host="0.0.0.0", port=port)
+
 
 
 
