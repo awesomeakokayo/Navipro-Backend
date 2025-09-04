@@ -832,7 +832,7 @@ def get_sample_videos(query: str) -> list:
         }
     ]
 
-# CHATBOT SYSTEM
+
 def get_ai_chat_response(message: str, db: Session, user_id: str) -> dict:
     """Generate AI chat response based on user's roadmap context"""
 
@@ -1149,11 +1149,19 @@ async def api_chat(chat_msg: ChatMessage, db: Session = Depends(get_db), user_id
     if not user:
         raise HTTPException(404, "User not found")
 
-    response = get_ai_chat_response(user_id, chat_msg.message, db, user_id) 
-    if "error" in response:
-        raise HTTPException(400, response["error"])
+    try:
+        response = get_ai_chat_response(chat_msg.message, db, user_id) 
+        if "error" in response:
+            raise HTTPException(400, response["error"])
     
-    return response
+        return response
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"[api_chat] unexpected error: {e}"
+        raise HTTPException(500, "Internal server error while processing chat")
 
 @app.get("/api/user_progress")
 def api_get_user_progress(db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
@@ -1211,6 +1219,7 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("agent_orchestra:app", host="0.0.0.0", port=port)
+
 
 
 
