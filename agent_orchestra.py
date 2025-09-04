@@ -107,7 +107,7 @@ app.add_middleware(
     allow_origins=["https://naviprototype.netlify.app", "https://naviproai-1.onrender.com"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*", "user_id"],
+    allow_headers=["*", "X-User-ID", "Authorization"],
 )
 
 from typing import Optional, List
@@ -129,13 +129,13 @@ class FullPipelineReq(BaseModel):
     learning_speed: Optional[str] = "average"
     skill_level: Optional[str] = "beginner"
 
-def get_current_user(user_id: Optional[str] = Header(None)):
+def get_current_user(x_user_id: Optional[str] = Header(None)):
     try:
-        if not user_id:
+        if not x_user_id:
             raise HTTPException(status_code=401, detail="User ID header missing")
         
         # Return the user_id directly from the header
-        return user_id
+        return x_user_id
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid or missing user ID")
 
@@ -165,12 +165,14 @@ def regroup_by_month(flat_weeks: list[dict], weeks_per_month: int = 4) -> list[d
 
 #LLM-based Roadmap Generation
 def llm_generate_roadmap(req: FullPipelineReq) -> dict:
-    """Generate comprehensive roadmap with weekly focuses and daily tasks"""
+    """Generate comprehensive roadmap with weekly focuses and daily tasks
+        This version is defensive: it retries, logs unexpected responses, and
+        returns a deterministic fallback if the LLM/remote API fails."""
     max_retries = 3
     
-    for attempt in range(max_retries):
+    for attempt in range(1, max_retries + 1):
         try:
-            print(f"Generating roadmap for: {req.goal}")
+            print(f"[LLM] Attempt {attempt} — Generating roadmap for: {req.goal}")
             
             if not GROQ_API_KEY:
                 raise HTTPException(500, "GROQ_API_KEY not configured")
@@ -256,7 +258,7 @@ def llm_generate_roadmap(req: FullPipelineReq) -> dict:
             # Add verify=False for testing only
             with httpx.Client(timeout=120.0, verify=False) as client:
                 response = client.post(
-                    f"{GROQ_BASE_URL}/chat/completions",
+                    f"{GROQ_BASE_URL.strip('/')}/chat/completions",
                     headers={
                         "Authorization": f"Bearer {GROQ_API_KEY}",
                         "Content-Type": "application/json"
@@ -268,36 +270,70 @@ def llm_generate_roadmap(req: FullPipelineReq) -> dict:
                             {"role": "user", "content": user_prompt}
                         ],
                         "temperature": 1,
-                        "max_tokens": 20000
+                        "max_tokens": 8000
                     }
                 )
             
-            # Get raw content
-            response_data = response.json()
-            if "choices" not in response_data or not response_data["choices"]:
-                raise ValueError("Invalid API response: missing choices")
-                
-            raw_content = response_data["choices"][0]["message"]["content"].strip()
-            print("Raw LLM response length:", len(raw_content))
+            # If remote returned non-2xx, log and retry
+            if not (200 <= response.status_code < 300):
+                print(f"[LLM] Non-2xx response: {response.status_code}")
+                print("[LLM] Response text (truncated):", response.text[:1200])
+                # retry loop continues
+                continue
 
-            # Clean and parse JSON
-            cleaned_json = clean_llm_response(raw_content)
-            roadmap_data = safe_json_loads(cleaned_json)
-            
-            # Validate structure with timeframe check
+            try:
+                response_data = response.json()
+            except Exception as e:
+                print("[LLM] Failed to parse JSON from LLM, response text (truncated):")
+                print(response.text[:1200])
+                continue
+
+            choices = response_data.get("choices") or []
+            if not choices:
+                print("[LLM] Missing or empty 'choices' in response:", response_data)
+                # Log the raw response and retry
+                continue
+
+            # Extract text
+            raw_content = choices[0].get("message", {}).get("content", "")
+            if not raw_content:
+                print("[LLM] Empty content in choice:", choices[0])
+                continue
+
+            print("[LLM] Raw LLM response length:", len(raw_content))
+
+            # Try to clean and parse
+            try:
+                cleaned_json = clean_llm_response(raw_content)
+                roadmap_data = safe_json_loads(cleaned_json)
+            except Exception as parse_err:
+                print("[LLM] JSON cleaning/parsing failed:", str(parse_err))
+                # log snippet of raw content
+                print("Raw content (truncated):", raw_content[:1000])
+                continue
+
+            # Validate structure
             if validate_roadmap_structure(roadmap_data, req):
+                print("[LLM] Roadmap validated successfully.")
                 return roadmap_data
             else:
-                print(f"Attempt {attempt + 1}: Invalid roadmap structure, retrying...")
+                print(f"[LLM] Validation failed on attempt {attempt}. Retrying...")
                 continue
-                
-        except Exception as e:
-            print(f"Error on attempt {attempt + 1}: {str(e)}")
-            if attempt == max_retries - 1:
-                raise
-    
-    raise ValueError("Failed to generate valid roadmap after multiple attempts")
 
+        except Exception as e:
+            # Unexpected exception during this attempt — log and retry (unless last)
+            print(f"[LLM] Exception on attempt {attempt}: {e}")
+            if attempt == max_retries:
+                print("[LLM] Last attempt failed with exception.")
+            # loop will continue to retry if attempts remain
+
+    # If we reach here, LLM generation failed after retries. Use deterministic fallback.
+    print("[LLM] Generation failed after retries — using deterministic fallback roadmap.")
+    fallback = create_fallback_roadmap(req)
+    # Enhance fallback to match the same metadata/IDs as normal generated roadmaps
+    fallback = enhance_roadmap_structure(fallback)
+    return fallback
+    
 def validate_roadmap_structure(roadmap_data: dict, req: FullPipelineReq) -> bool:
     """Validate that the roadmap has the correct structure and month count"""
     try:
@@ -883,7 +919,7 @@ def get_ai_chat_response(message: str, db: Session, user_id: str) -> dict:
                     "model": "openai/gpt-oss-120b",
                     "messages": messages,
                     "temperature": 1,
-                    "max_tokens": 20000
+                    "max_tokens": 8000
                 }
             )
         response.raise_for_status()
@@ -912,20 +948,13 @@ def get_ai_chat_response(message: str, db: Session, user_id: str) -> dict:
 # API Endpoints
 
 @app.post("/api/generate_roadmap")
-def api_generate_roadmap(req: FullPipelineReq, db: Session = Depends (get_db), user_id: str = Depends(get_current_user)):
-    """Generate initial roadmap"""
+def api_generate_roadmap(req: FullPipelineReq, db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
+    """Generate initial roadmap (uses fallback if LLM fails)"""
     try:
-        # Generate roadmap with validation
+        # Generate roadmap (llm_generate_roadmap now returns fallback on failure)
         roadmap = llm_generate_roadmap(req)
 
-        timeframe_map = {
-            "3_months": 3,
-            "6_months": 6,
-            "1_year": 12,
-            "not_sure": 3  # Make sure it's consistent
-        }
-        
-        # Add user data to roadmap
+        # Add user-provided metadata into roadmap
         roadmap.update({
             "goal": req.goal,
             "target_role": req.target_role,
@@ -934,49 +963,74 @@ def api_generate_roadmap(req: FullPipelineReq, db: Session = Depends (get_db), u
             "learning_speed": req.learning_speed,
             "skill_level": req.skill_level
         })
-        
-        # Add IDs and metadata
-        roadmap = enhance_roadmap_structure(roadmap)
-        
-        user = User(
-            user_id=user_id,
-            goal=req.goal,
-            target_role=req.target_role,
-            timeframe=req.timeframe,
-            hours_per_week=req.hours_per_week,
-            learning_style=req.learning_style,
-            learning_speed=req.learning_speed,
-            skill_level=req.skill_level
-        )
-        db.add(user)
-        
-        # Create roadmap record
-        roadmap_record = Roadmap(
-            user_id=user_id,
-            roadmap_data=roadmap
-        )
-        db.add(roadmap_record)
 
-        # Create progress record
-        progress = Progress(
-            user_id=user_id,
-            current_day=1,
-            current_week=1,
-            current_month=1,
-            total_tasks_completed=0
-        )
-        db.add(progress)
-        
+        # IDs and metadata
+        roadmap = enhance_roadmap_structure(roadmap)
+
+        # Upsert user (avoid duplicate primary key insert errors)
+        existing_user = db.query(User).filter(User.user_id == user_id).first()
+        if existing_user:
+            # update fields
+            existing_user.goal = req.goal
+            existing_user.target_role = req.target_role
+            existing_user.timeframe = req.timeframe
+            existing_user.hours_per_week = req.hours_per_week
+            existing_user.learning_style = req.learning_style
+            existing_user.learning_speed = req.learning_speed
+            existing_user.skill_level = req.skill_level
+            db.add(existing_user)
+        else:
+            new_user = User(
+                user_id=user_id,
+                goal=req.goal,
+                target_role=req.target_role,
+                timeframe=req.timeframe,
+                hours_per_week=req.hours_per_week,
+                learning_style=req.learning_style,
+                learning_speed=req.learning_speed,
+                skill_level=req.skill_level
+            )
+            db.add(new_user)
+
+        # Create or replace roadmap record for that user (delete old)
+        existing_rm = db.query(Roadmap).filter(Roadmap.user_id == user_id).first()
+        if existing_rm:
+            existing_rm.roadmap_data = roadmap
+            existing_rm.updated_at = datetime.utcnow()
+            db.add(existing_rm)
+        else:
+            roadmap_record = Roadmap(
+                user_id=user_id,
+                roadmap_data=roadmap
+            )
+            db.add(roadmap_record)
+
+        # Create or update progress record
+        existing_progress = db.query(Progress).filter(Progress.user_id == user_id).first()
+        if existing_progress:
+            existing_progress.current_day = 1
+            existing_progress.current_week = 1
+            existing_progress.current_month = 1
+            existing_progress.total_tasks_completed = 0
+            db.add(existing_progress)
+        else:
+            progress = Progress(
+                user_id=user_id,
+                current_day=1,
+                current_week=1,
+                current_month=1,
+                total_tasks_completed=0
+            )
+            db.add(progress)
+
         db.commit()
 
-        
-        # Print user ID clearly in terminal
         print("\n" + "="*50)
-        print(f"Generated User ID: {user_id}")
+        print(f"Generated/Stored User ID: {user_id}")
         print(f"Goal: {req.goal}")
         print(f"Target Role: {req.target_role}")
         print("="*50 + "\n")
-        
+
         return {
             "success": True,
             "user_id": user_id,
@@ -984,7 +1038,8 @@ def api_generate_roadmap(req: FullPipelineReq, db: Session = Depends (get_db), u
             "message": "Roadmap generated successfully!"
         }
     except Exception as e:
-        print(f"Roadmap generation failed: {str(e)}")
+        # Always log the exception and return a descriptive server error
+        print(f"[api_generate_roadmap] Roadmap generation failed: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Failed to generate roadmap: {str(e)}"
@@ -1156,6 +1211,7 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("agent_orchestra:app", host="0.0.0.0", port=port)
+
 
 
 
