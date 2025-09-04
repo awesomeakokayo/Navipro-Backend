@@ -129,13 +129,13 @@ class FullPipelineReq(BaseModel):
     learning_speed: Optional[str] = "average"
     skill_level: Optional[str] = "beginner"
 
-def get_current_user(x_user_id: Optional[str] = Header(None)):
+def get_current_user(user_id: Optional[str] = Header(None)):
     try:
-        if not x_user_id:
+        if not user_id:
             raise HTTPException(status_code=401, detail="User ID header missing")
         
         # Return the user_id directly from the header
-        return x_user_id
+        return user_id
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid or missing user ID")
 
@@ -1156,6 +1156,7 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("agent_orchestra:app", host="0.0.0.0", port=port)
+
 
 
 
