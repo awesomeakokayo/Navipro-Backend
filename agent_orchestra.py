@@ -1160,7 +1160,7 @@ async def api_chat(chat_msg: ChatMessage, db: Session = Depends(get_db), user_id
     except Exception as e:
         import traceback
         traceback.print_exc()
-        print(f"[api_chat] unexpected error: {e}"
+        print(f"[api_chat] unexpected error: {e}")
         raise HTTPException(500, "Internal server error while processing chat")
 
 @app.get("/api/user_progress")
@@ -1219,6 +1219,7 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("agent_orchestra:app", host="0.0.0.0", port=port)
+
 
 
 
