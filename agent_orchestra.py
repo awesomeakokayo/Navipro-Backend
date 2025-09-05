@@ -165,10 +165,8 @@ def regroup_by_month(flat_weeks: list[dict], weeks_per_month: int = 4) -> list[d
 
 #LLM-based Roadmap Generation
 def llm_generate_roadmap(req: FullPipelineReq) -> dict:
-    """Generate comprehensive roadmap with weekly focuses and daily tasks
-        This version is defensive: it retries, logs unexpected responses, and
-        returns a deterministic fallback if the LLM/remote API fails."""
-    max_retries = 3
+    """Generate comprehensive roadmap with weekly focuses and daily tasks"""
+    max_retries = 4
     
     for attempt in range(1, max_retries + 1):
         try:
@@ -255,8 +253,7 @@ def llm_generate_roadmap(req: FullPipelineReq) -> dict:
     IMPORTANT: The roadmap MUST contain exactly {actual_timeframe.split()[0]} months of content.
     Each week should have exactly 6 daily tasks to match the UI template."""
     
-            # Add verify=False for testing only
-            with httpx.Client(timeout=120.0, verify=False) as client:
+            with httpx.Client(timeout=120.0) as client:
                 response = client.post(
                     f"{GROQ_BASE_URL.strip('/')}/chat/completions",
                     headers={
@@ -269,7 +266,7 @@ def llm_generate_roadmap(req: FullPipelineReq) -> dict:
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_prompt}
                         ],
-                        "temperature": 1,
+                        "temperature": 0.6,
                         "max_tokens": 8000
                     }
                 )
@@ -1219,6 +1216,7 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("agent_orchestra:app", host="0.0.0.0", port=port)
+
 
 
 
