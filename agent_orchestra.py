@@ -129,15 +129,34 @@ class FullPipelineReq(BaseModel):
     learning_speed: Optional[str] = "average"
     skill_level: Optional[str] = "beginner"
 
-def get_current_user(x_user_id: Optional[str] = Header(None)):
-    try:
-        if not x_user_id:
-            raise HTTPException(status_code=401, detail="User ID header missing")
-        
-        # Return the user_id directly from the header
+def def get_current_user(
+    request: Request,
+    x_user_id: Optional[str] = Header(None, alias="X-User-ID"),
+    authorization: Optional[str] = Header(None, alias="Authorization")
+):
+    if x_user_id:
+        print("[auth] got X-User-ID header:", x_user_id)
         return x_user_id
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid or missing user ID")
+
+    if authorization:
+        token = authorization.split("Bearer ")[-1] if "Bearer " in authorization else authorization
+        # Decode JWT to extract user id:
+        if AUTH_SECRET:
+            try:
+                payload = jwt.decode(token, AUTH_SECRET, algorithms=["HS256"])
+                user_id = payload.get("sub") or payload.get("user_id") or payload.get("uid")
+                if user_id:
+                    print("[auth] got user_id from JWT:", user_id)
+                    return user_id
+            except Exception as e:
+                print("[auth] JWT decode error:", e)
+                
+        return token
+
+    # 3) Nothing found — helpful error
+    # Print headers to debug
+    print("[auth] Missing auth headers. Request headers:", dict(request.headers))
+    raise HTTPException(status_code=401, detail="User ID header missing or invalid")
 
 
 def regroup_by_year(flat_months: list[dict], months_per_year: int = 12) -> list[dict]:
@@ -1076,7 +1095,7 @@ def api_get_daily_task(db: Session = Depends(get_db), user_id: str = Depends(get
     if not user:
         raise HTTPException(404, "User not found")
     
-    task = get_current_daily_task(user_id, db)
+    task = get_current_daily_task(db, user_id)
     if not task:
         raise HTTPException(404, "No current task found")
     
@@ -1092,12 +1111,12 @@ def api_complete_task(completion: TaskCompletion, db: Session = Depends(get_db),
      # If client provided a task_id, use it; otherwise use current daily task
     target_task_id = completion.task_id
     if not target_task_id:
-        current_task = get_current_daily_task(user_id, db)
+        current_task = get_current_daily_task(db, user_id)
         if not current_task or "task_id" not in current_task:
             raise HTTPException(404, "No current task to complete")
         target_task_id = current_task["task_id"]
 
-    result = mark_task_completed(user_id, target_task_id, db)
+    result = mark_task_completed(target_task_id, db, user_id)
 
     if "error" in result:
         raise HTTPException(400, result["error"])
@@ -1133,7 +1152,7 @@ def api_get_week_videos(db: Session = Depends(get_db), user_id: str = Depends(ge
     if not user:
         raise HTTPException(404, "User not found")
     
-    videos = get_current_week_videos(user_id, db)
+    videos = get_current_week_videos(db, user_id)
     if "error" in videos:
         raise HTTPException(404, videos["error"])
     
@@ -1216,6 +1235,7 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("agent_orchestra:app", host="0.0.0.0", port=port)
+
 
 
 
