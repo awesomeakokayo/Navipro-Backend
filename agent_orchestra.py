@@ -129,7 +129,7 @@ class FullPipelineReq(BaseModel):
     learning_speed: Optional[str] = "average"
     skill_level: Optional[str] = "beginner"
 
-def def get_current_user(
+def get_current_user(
     request: Request,
     x_user_id: Optional[str] = Header(None, alias="X-User-ID"),
     authorization: Optional[str] = Header(None, alias="Authorization")
@@ -1235,6 +1235,7 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("agent_orchestra:app", host="0.0.0.0", port=port)
+
 
 
 
