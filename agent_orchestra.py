@@ -140,34 +140,15 @@ def get_current_user(
         return x_user_id
 
     if authorization:
+        # Allow "Bearer <id>" or just "<id>"
         token = authorization.split("Bearer ")[-1] if "Bearer " in authorization else authorization
-        if not token:
-            raise HTTPException(status_code=401, detail="Empty token")
-
-        try:
-            payload = jwt.decode(token, AUTH_SECRET, algorithms=["HS256"])
-            print("[auth] decoded JWT payload:", payload)
-
-            user_id = (
-                payload.get("sub")
-                or payload.get("user_id")
-                or payload.get("uid")
-                or payload.get("id")
-                or payload.get("userId")
-            )
-            if user_id:
-                print("[auth] resolved user_id:", user_id)
-                return user_id
-
-            raise HTTPException(status_code=401, detail="No user_id in token payload")
-        except jwt.ExpiredSignatureError:
-            raise HTTPException(status_code=401, detail="Token expired")
-        except Exception as e:
-            print("[auth] JWT decode failed, treating as raw user_id:", e)
+        if token:
+            print("[auth] using raw Authorization as user_id:", token)
             return token
 
     print("[auth] Missing auth headers. Headers were:", dict(request.headers))
     raise HTTPException(status_code=401, detail="User ID header missing or invalid")
+
 
 def regroup_by_year(flat_months: list[dict], months_per_year: int = 12) -> list[dict]:
     years = []
@@ -1245,6 +1226,7 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("agent_orchestra:app", host="0.0.0.0", port=port)
+
 
 
 
