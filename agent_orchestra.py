@@ -140,34 +140,35 @@ def get_current_user(
         return x_user_id
 
     if authorization:
-        token = authorization.split("Bearer ")[-1] if "Bearer " in authorization else authorization
-        if not token:
-            raise HTTPException(status_code=401, detail="Empty token")
+        token = authorization.replace("Bearer ", "").strip()
 
-        try:
-            payload = jwt.decode(token, AUTH_SECRET, algorithms=["HS256"])
-            print("[auth] decoded JWT payload:", payload)
+        if not token or token.lower() in ["null", "none", "undefined", ""]:
+            raise HTTPException(status_code=401, detail="Empty or invalid token")
 
-            user_id = (
-                payload.get("sub")
-                or payload.get("user_id")
-                or payload.get("uid")
-                or payload.get("id")
-                or payload.get("userId")
-            )
+        # If it looks like a JWT (3 dot parts) → decode it
+        if token.count(".") == 2:
+            try:
+                payload = jwt.decode(token, AUTH_SECRET, algorithms=["HS256"])
+                user_id = (
+                    payload.get("sub")
+                    or payload.get("user_id")
+                    or payload.get("uid")
+                    or payload.get("id")
+                    or payload.get("userId")
+                )
+                if user_id:
+                    print("[auth] resolved user_id from JWT:", user_id)
+                    return user_id
+                raise HTTPException(status_code=401, detail="No user_id in token payload")
+            except jwt.ExpiredSignatureError:
+                raise HTTPException(status_code=401, detail="Token expired")
+            except Exception as e:
+                print("[auth] JWT decode error:", e)
+                raise HTTPException(status_code=401, detail="Invalid token")
 
-            if user_id:
-                print("[auth] resolved user_id:", user_id)
-                return user_id
+        print("[auth] treating non-JWT Authorization as user_id:", token)
+        return token
 
-            raise HTTPException(status_code=401, detail="No user_id in token payload")
-        except jwt.ExpiredSignatureError:
-            raise HTTPException(status_code=401, detail="Token expired")
-        except Exception as e:
-            print("[auth] JWT decode error:", e)
-            raise HTTPException(status_code=401, detail="Invalid token")
-
-    print("[auth] Missing auth headers. Headers were:", dict(request.headers))
     raise HTTPException(status_code=401, detail="User ID header missing or invalid")
 
 
@@ -1247,6 +1248,7 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("agent_orchestra:app", host="0.0.0.0", port=port)
+
 
 
 
