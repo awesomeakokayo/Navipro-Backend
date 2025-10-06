@@ -300,7 +300,7 @@ def llm_generate_roadmap(req: FullPipelineReq) -> dict:
                         "Content-Type": "application/json"
                     },
                     json={
-                        "model": "deepseek-r1-distill-llama-70b",
+                        "model": "qwen/qwen3-32b",
                         "messages": [
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_prompt}
@@ -870,7 +870,7 @@ def get_sample_videos(query: str) -> list:
 
 
 def get_ai_chat_response(message: str, db: Session, user_id: str) -> dict:
-    """Generate AI chat response based on user's roadmap context"""
+    """Generate AI chat response based on user's progress and roadmap context, if roadmap has been created"""
 
     # Get user data
     user = db.query(User).filter(User.user_id == user_id).first()
@@ -903,6 +903,8 @@ def get_ai_chat_response(message: str, db: Session, user_id: str) -> dict:
     3. Give practical advice based on their goal
     4. Keep responses conversational and supportive
     5. If asked about progress, reference their completed tasks
+    6. When users have not chosen or decided on a career path, guide them through with some questions about their preferences, desires, motivations, future plans and recommend the best options to them but if they want you to pick one for them, pick one that has been proven to have the highest returns based on available options
+    7. When helping users decide on a career path, find out about the things tht they'd be passionate about, what they'd give their all in doing.
     
     Guidelines:
     Clarity & Structure:
@@ -1255,6 +1257,7 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("agent_orchestra:app", host="0.0.0.0", port=port)
+
 
 
 
