@@ -895,7 +895,6 @@ def get_ai_chat_response(message: str, db: Session, user_id: str) -> dict:
     Context about the user:
     - Career Goal: {user.goal}
     - Tasks Completed: {total_completed}
-    - Today's task: {task_title}
     - Learning Journey: Currently working on their {user.target_role} roadmap
     
     Your role:
@@ -1589,6 +1588,7 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("agent_orchestra:app", host="0.0.0.0", port=port)
+
 
 
 
